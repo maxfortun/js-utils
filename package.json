@@ -1,0 +1,18 @@
+{
+  "name": "@maxfortun/js-utils",
+  "version": "0.0.1",
+  "description": "General Purpose JS Utils",
+  "main": "index.js",
+  "scripts": {
+    "pretest": "docker ps | grep -q js-utils-test-mongodb-0 || docker run --rm -d -p 67017:27017 -e MONGO_INITDB_ROOT_USERNAME=test -e MONGO_INITDB_ROOT_PASSWORD=test --name js-utils-test-mongodb-0 mongo:latest; docker ps | grep -q js-utils-test-mongodb-1 || docker run --rm -d -p 67018:27017 -e MONGO_INITDB_ROOT_USERNAME=test -e MONGO_INITDB_ROOT_PASSWORD=test --name js-utils-test-mongodb-1 mongo:latest;",
+    "test": "DEBUG=*,-babel* jest --runInBand --detectOpenHandles",
+    "posttest": "docker stop js-utils-test-mongodb-0; docker stop js-utils-test-mongodb-1;",
+    "mongosh-test": "docker run --rm -it --net=host mongo:latest mongosh mongodb://test:test@127.0.0.1:${MONGO_PORT:-27017}/test"
+  },
+  "dependencies": {
+    "mongoose": "^7.6.3"
+  },
+  "devDependencies": {
+    "jest": "^29.3.1"
+  }
+}
