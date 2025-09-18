@@ -5,11 +5,12 @@ const JSUtils = require('./index');
 const context = {
 	options: {
 		uris: [
-			`mongodb://127.0.0.1:47017/`,
-			`mongodb://127.0.0.1:47018/`,
+			`mongodb://localhost:47017/?directConnection=true`,
+			`mongodb://localhost:47018/?directConnection=true`,
 		],
 		options: {
 			useNewUrlParser: true,
+			useUnifiedTopology: true
 		},
 		debug: true,
 		collection: "test",

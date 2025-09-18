@@ -1,6 +1,6 @@
 const debug = require('debug')('js-utils:mongodb_rs_uri');
 
-const { MongoClient, Logger } = require('mongodb');
+const { MongoClient } = require('mongodb');
 const { URL } = require('url');
 
 /**
