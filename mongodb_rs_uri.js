@@ -15,11 +15,8 @@ module.exports = async function mongodb_rs_uri(uri, options) {
 	try {
 		await client.connect();
 
-		// Run replSetGetConfig to discover replica set members
-		const adminDb = client.db('admin');
-		const result = await adminDb.command({ replSetGetConfig: 1 });
-
-		const members = result.config.members.map(m => m.host);
+		const db = client.db(); 
+		const result = await db.command({ isMaster: 1 });
 
 		// Parse original URI so we keep username, password, db, and options
 		const u = new URL(uri);
@@ -31,8 +28,9 @@ module.exports = async function mongodb_rs_uri(uri, options) {
 
 		// If replicaSet is missing, preserve from config
 		const searchParams = new URLSearchParams(search);
+
 		if (!searchParams.has('replicaSet')) {
-			searchParams.set('replicaSet', result.config._id);
+			searchParams.set('replicaSet', result.setName);
 		}
 
 		// Build new URI
@@ -43,8 +41,8 @@ module.exports = async function mongodb_rs_uri(uri, options) {
 			auth += '@';
 		}
 
-		const newUri = `mongodb://${auth}${members.join(',')}${pathname}?${searchParams.toString()}`;
-	debug(uri, '->', newUri);
+		const newUri = `mongodb://${auth}${result.hosts.join(',')}${pathname}?${searchParams.toString()}`;
+		debug(uri, '->', newUri);
 		return newUri;
 	} finally {
 		await client.close();
