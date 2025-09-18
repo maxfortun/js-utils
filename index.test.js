@@ -1,14 +1,15 @@
 const debug = require('debug')('js-utils-test');
 
-const MongooseJSProxy = require('./index');
-
-const MONGO_PORT = process.env.MONGO_PORT || 27017;
+const JSUtils = require('./index');
 
 const context = {
 	options: {
-		uri: `mongodb://test:test@127.0.0.1:${MONGO_PORT}/`,
+		uris: [
+			`mongodb://127.0.0.1:47017/`,
+			`mongodb://127.0.0.1:47018/`,
+		],
 		options: {
-			useNewUrlParser: true
+			useNewUrlParser: true,
 		},
 		debug: true,
 		collection: "test",
@@ -23,25 +24,11 @@ const context = {
 
 describe('mongodb', () => {
 
-	test('connect', async () => {
-		context.mongoose = async function() {
-			if(this.connectPromise) {
-				return this.connectPromise;
-			}
-
-			this._mongoose = require('mongoose');
-			if(context.options.debug) {
-				this._mongoose.set('debug', context.options.debug);
-			}
-
-			return this.connectPromise = this._mongoose.connect(context.options.uri, context.options.options);
+	test('mongodb_rs_uri', async () => {
+		for(let uri of context.options.uris) {
+			await JSUtils.mongodb_rs_uri(uri, context.options.options);
 		}
-
-		return await context.mongoose();
-	});
-
-	test('diconnect', async () => {
-		await (await context.mongoose()).disconnect();
 	});
 
 });
+

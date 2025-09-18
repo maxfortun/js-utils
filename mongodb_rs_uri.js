@@ -1,4 +1,6 @@
-const { MongoClient } = require('mongodb');
+const debug = require('debug')('js-utils:mongodb_rs_uri');
+
+const { MongoClient, Logger } = require('mongodb');
 const { URL } = require('url');
 
 /**
@@ -8,8 +10,10 @@ const { URL } = require('url');
  * @param {string} uri - A mongodb:// connection string with a service hostname
  * @returns {Promise<string>} - A corrected mongodb:// URI listing all members
  */
-async function mongodb_rs_uri(uri) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+module.exports = async function mongodb_rs_uri(uri, options) {
+  debug(uri, options);
+
+  const client = new MongoClient(uri, options);
   try {
     await client.connect();
 
@@ -48,5 +52,4 @@ async function mongodb_rs_uri(uri) {
   }
 }
 
-module.exports = { rsuri };
 
