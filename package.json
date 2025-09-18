@@ -6,7 +6,7 @@
   "scripts": {
     "pretest": "docker ps | grep -q js-utils-test-mongodb-0 || docker run --network host --rm -d --name js-utils-test-mongodb-0 mongo:latest --replSet rs0 --port 47017 --bind_ip_all; docker ps | grep -q js-utils-test-mongodb-1 || docker run --network host --rm -d --name js-utils-test-mongodb-1 mongo:latest --replSet rs0 --port 47018 --bind_ip_all; docker exec -it js-utils-test-mongodb-0 bash -c 'until mongosh localhost:47017 --eval \"rs.initiate({_id: \\\"rs0\\\", members: [ { _id: 0, host: \\\"localhost:47017\\\" }, { _id: 1, host: \\\"localhost:47018\\\" } ] })\" 2>&1 | grep \"already initialized\"; do echo \\\"Waiting for all nodes\\\"; sleep 5; done'",
     "test": "docker run --rm -it --net=host -v $PWD:/usr/src/app -w /usr/src/app node npx jest --runInBand --detectOpenHandles",
-    "posttest": "docker stop js-utils-test-mongodb-0; docker stop js-utils-test-mongodb-1;",
+    "posttest": "if [ \"$KEEP_TEST_DB\" != \"true\" ]; then docker stop js-utils-test-mongodb-0; docker stop js-utils-test-mongodb-1; fi",
     "mongosh-test": "docker run --rm -it --net=host mongo:latest mongosh 127.0.0.1:47017/test --eval 'rs.conf();'"
   },
   "dependencies": {
