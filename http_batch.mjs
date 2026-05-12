@@ -20,6 +20,7 @@ Options:
   -b, --body <body_or_{N}>               Optional POST body. Can be a literal, a file path, or a positional placeholder.
   -m, --method <HTTP_METHOD_or_{N}>      Optional HTTP method. Defaults to POST if body exists, otherwise GET.
   -r, --rate <N>                         Optional rate limit (stories per minute). Default: 0 (disabled).
+  -w, --workers <N>                       Number of parallel workers. Default: 1 (sequential).
   -p, --progress <folder>                Optional folder to store progress marker files. Only creates marker files if specified.
   -pm, --progress-marker <ext>           Optional marker file extension (default: done).
   -H, --header <'Header: Value_or_{N}'>  Optional header. Can be specified multiple times. Supports positional placeholders.
@@ -64,6 +65,7 @@ const separatorArg = getArg(['--separator', '-s'], '\\s+');
 const bodyParam = getArg(['--body', '-b'], null);
 let methodParam = getArg(['--method', '-m'], null);
 const rateLimit = parseInt(getArg(['--rate', '-r'], '0'), 10);
+const numWorkers = parseInt(getArg(['--workers', '-w'], '1'), 10);
 const progressFolder = getArg(['--progress', '-p'], null);
 const progressMarkerExt = getArg(['--progress-marker', '-pm'], 'done');
 const outputFolder = getArg(['--output', '-o'], null);
@@ -216,6 +218,80 @@ function getOutputPath(line) {
     return path.join(outputFolder, safeName + ext);
 }
 
+// ---- PROCESS SINGLE LINE ----
+async function processLine(trimmed) {
+    const values = trimmed.split(separatorRegex);
+    const markerPath = getMarkerPath(trimmed);
+
+    if (markerPath && fs.existsSync(markerPath)) {
+        console.log(`Skipping line "${trimmed}" - already marked as done`);
+        return;
+    }
+
+    await throttle();
+
+    const urlStr = replacePlaceholders(urlTemplate, values);
+    const body = buildBody(bodyParam, values);
+    const httpMethod = determineMethod(methodParam, values, body);
+    const headers = buildHeaders(headerArgs, values, body);
+
+    if (debug) {
+        console.log('--- DEBUG ---');
+        console.log('Line:', trimmed);
+        console.log('URL:', urlStr);
+        console.log('Method:', httpMethod);
+        console.log('Headers:', headers);
+        if (body) console.log('Body:', body);
+    }
+
+    let res;
+    try {
+        res = await fetch(urlStr, {
+            method: httpMethod,
+            body: body,
+            headers: headers,
+            agent: agent,
+            redirect: noFollow ? 'manual' : 'follow'
+        });
+    } catch (err) {
+        console.error(`Error: request for line "${trimmed}" failed: ${err}`);
+        process.exit(1);
+    }
+
+    if (failCodes.has(res.status)) {
+        console.error(`Error: request for line "${trimmed}" failed with status ${res.status}`);
+        console.error('Response Headers:', Object.fromEntries(res.headers.entries()));
+        process.exit(1);
+    }
+
+    if (debug) {
+        console.log('Response Status:', res.status);
+        console.log('Response Headers:', Object.fromEntries(res.headers.entries()));
+        console.log('-------------');
+    }
+
+    if (res.status == 200 && outputFolder) {
+        const outputPath = getOutputPath(trimmed);
+        const responseBody = await res.text();
+        fs.writeFileSync(outputPath, responseBody);
+    }
+
+    if (markerPath) {
+        fs.writeFileSync(markerPath, '');
+    }
+
+    console.log(`${new Date().toISOString()} ${httpMethod} ${res.status} ${trimmed}`);
+}
+
+// ---- WORKER POOL ----
+async function worker(queue) {
+    while (true) {
+        const line = queue.shift();
+        if (line === undefined) break;
+        await processLine(line);
+    }
+}
+
 // ---- PROCESS FILES ----
 async function processFile(filePath) {
     const rl = readline.createInterface({
@@ -223,74 +299,18 @@ async function processFile(filePath) {
         crlfDelay: Infinity
     });
 
+    const queue = [];
     for await (const line of rl) {
         const trimmed = line.trim();
         if (trimmed.length === 0) continue;
-
-        const values = trimmed.split(separatorRegex);
-        const markerPath = getMarkerPath(trimmed);
-
-        if (markerPath && fs.existsSync(markerPath)) {
-            console.log(`Skipping line "${trimmed}" - already marked as done`);
-            continue;
-        }
-
-        await throttle();
-
-        const urlStr = replacePlaceholders(urlTemplate, values);
-        const body = buildBody(bodyParam, values);
-        const httpMethod = determineMethod(methodParam, values, body);
-        const headers = buildHeaders(headerArgs, values, body);
-
-        if (debug) {
-            console.log('--- DEBUG ---');
-            console.log('Line:', trimmed);
-            console.log('URL:', urlStr);
-            console.log('Method:', httpMethod);
-            console.log('Headers:', headers);
-            if (body) console.log('Body:', body);
-        }
-
-        let res;
-        try {
-            res = await fetch(urlStr, {
-                method: httpMethod,
-                body: body,
-                headers: headers,
-                agent: agent,
-                redirect: noFollow ? 'manual' : 'follow'
-            });
-        } catch (err) {
-            console.error(`Error: request for line "${trimmed}" failed: ${err}`);
-            process.exit(1);
-        }
-
-        // ALWAYS print response headers on failure
-        if (failCodes.has(res.status)) {
-            console.error(`Error: request for line "${trimmed}" failed with status ${res.status}`);
-            console.error('Response Headers:', Object.fromEntries(res.headers.entries()));
-            process.exit(1);
-        }
-
-        if (debug) {
-            console.log('Response Status:', res.status);
-            console.log('Response Headers:', Object.fromEntries(res.headers.entries()));
-            console.log('-------------');
-        }
-
-        // Save response body if output folder is specified
-        if (res.status == 200 && outputFolder) {
-            const outputPath = getOutputPath(trimmed);
-            const responseBody = await res.text();
-            fs.writeFileSync(outputPath, responseBody);
-        }
-
-        if (markerPath) {
-            fs.writeFileSync(markerPath, '');
-        }
-
-        console.log(`${new Date().toISOString()} ${httpMethod} ${res.status} ${trimmed}`);
+        queue.push(trimmed);
     }
+
+    const workers = [];
+    for (let i = 0; i < numWorkers; i++) {
+        workers.push(worker(queue));
+    }
+    await Promise.all(workers);
 }
 
 // ---- PROCESS ALL FILES ----
